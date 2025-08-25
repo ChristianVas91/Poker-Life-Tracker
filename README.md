@@ -1288,33 +1288,124 @@
         function getTodayDateString() { return new Date().toISOString().split('T')[0]; }
         function renderHabitsPage() { 
             const page = document.getElementById('page-habits');
-            page.innerHTML = `
-            <div class="card max-w-2xl mx-auto">
-                <div class="text-center mb-6">
-                    <h2 class="text-2xl font-semibold">Rutina y Hábitos Diarios</h2>
-                    <p id="habits-date" class="text-gray-500"></p>
-                </div>
-                <div id="habits-container" class="space-y-6">
-                    </div>
-                <div class="mt-6 border-t pt-4">
-                     <button id="add-habit-btn" class="btn btn-secondary w-full">Personalizar y Agregar Hábitos</button>
-                </div>
-            </div>`;
-            const today = getTodayDateString(); 
-            document.getElementById('habits-date').textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); 
-            const habitsContainer = document.getElementById('habits-container');
+            const today = getTodayDateString();
             const todayHabits = habitData[today] || {};
             
-            habitsContainer.innerHTML = customHabits.map(habit => {
+            // Calculate today's completion stats
+            let completedToday = 0;
+            let totalHabits = customHabits.length;
+            
+            customHabits.forEach(habit => {
+                const value = todayHabits[habit.id];
+                if (habit.type === 'checkbox' && value === true) {
+                    completedToday++;
+                } else if (habit.type === 'counter') {
+                    const target = habit.target || 1;
+                    if (value >= target) completedToday++;
+                }
+            });
+            
+            const completionPercent = totalHabits > 0 ? Math.round((completedToday / totalHabits) * 100) : 0;
+            
+            page.innerHTML = `
+            <div class="max-w-4xl mx-auto space-y-6">
+                <!-- Header and Stats -->
+                <div class="card">
+                    <div class="text-center mb-6">
+                        <h2 class="text-2xl font-semibold">Rutina y Hábitos Diarios</h2>
+                        <p id="habits-date" class="text-gray-500"></p>
+                    </div>
+                    
+                    <!-- Daily Progress -->
+                    <div class="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg mb-6">
+                        <div class="text-center mb-4">
+                            <h3 class="text-lg font-semibold text-gray-800">Progreso de Hoy</h3>
+                            <div class="text-3xl font-bold mt-2 ${completionPercent === 100 ? 'text-green-600' : 'text-indigo-600'}">
+                                ${completionPercent}%
+                            </div>
+                            <p class="text-sm text-gray-600">${completedToday} de ${totalHabits} hábitos completados</p>
+                        </div>
+                        
+                        <!-- Progress Bar -->
+                        <div class="w-full bg-gray-200 rounded-full h-3 mb-4">
+                            <div class="bg-gradient-to-r from-indigo-500 to-purple-600 h-3 rounded-full transition-all duration-500" style="width: ${completionPercent}%"></div>
+                        </div>
+                        
+                        ${completionPercent === 100 ? 
+                            '<div class="text-center text-green-600 font-medium">¡Felicidades! Has completado todos tus hábitos hoy 🎉</div>' : 
+                            '<div class="text-center text-gray-600">¡Sigue así! Cada hábito cuenta para tu crecimiento personal</div>'
+                        }
+                    </div>
+                </div>
+                
+                <!-- Habits List -->
+                <div class="card">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-semibold">Mis Hábitos</h3>
+                        <button id="add-habit-btn" class="btn btn-primary">+ Agregar Hábito</button>
+                    </div>
+                    <div id="habits-container" class="space-y-4">
+                    </div>
+                    ${totalHabits === 0 ? 
+                        '<div class="text-center py-8 text-gray-500"><p class="mb-4">No tienes hábitos configurados aún</p><p class="text-sm">¡Comienza agregando tu primer hábito para empezar a construir una rutina saludable!</p></div>' : 
+                        ''
+                    }
+                </div>
+            </div>`;
+            
+            document.getElementById('habits-date').textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); 
+            const habitsContainer = document.getElementById('habits-container');
+            
+            habitsContainer.innerHTML = customHabits.map((habit, index) => {
                 let controlHtml = '';
+                const streakCount = calculateStreakCount(habit.id);
+                let progressHtml = '';
+                
                 if (habit.type === 'counter') {
                     const count = todayHabits[habit.id] || 0;
-                    controlHtml = `<div class="flex items-center gap-4"><button class="btn btn-secondary" onclick="updateHabit('${habit.id}', -1)">-</button><span id="habit-${habit.id}-count" class="font-bold text-xl w-8 text-center">${count}</span><button class="btn btn-secondary" onclick="updateHabit('${habit.id}', 1)">+</button></div>`;
+                    const target = habit.target || 1;
+                    const progressPercent = Math.min((count / target) * 100, 100);
+                    controlHtml = `<div class="flex items-center gap-4">
+                        <button class="btn btn-secondary btn-sm" onclick="updateHabit('${habit.id}', -1)">-</button>
+                        <span id="habit-${habit.id}-count" class="font-bold text-xl w-12 text-center">${count}</span>
+                        <button class="btn btn-secondary btn-sm" onclick="updateHabit('${habit.id}', 1)">+</button>
+                    </div>`;
+                    progressHtml = `<div class="w-full bg-gray-200 rounded-full h-2 mt-2">
+                        <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: ${progressPercent}%"></div>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">${count}/${target} ${habit.unit || ''}</div>`;
                 } else {
                     const isChecked = todayHabits[habit.id] || false;
-                    controlHtml = `<input type="checkbox" id="habit-${habit.id}-check" class="h-6 w-6 rounded text-indigo-600 focus:ring-indigo-500" onchange="updateHabit('${habit.id}', this.checked)" ${isChecked ? 'checked' : ''}>`;
+                    controlHtml = `<div class="flex items-center">
+                        <input type="checkbox" id="habit-${habit.id}-check" class="h-6 w-6 rounded text-indigo-600 focus:ring-indigo-500" onchange="updateHabit('${habit.id}', this.checked)" ${isChecked ? 'checked' : ''}>
+                        <span class="ml-2 text-sm ${isChecked ? 'text-green-600 font-medium' : 'text-gray-500'}">
+                            ${isChecked ? '✓ Completado' : 'Pendiente'}
+                        </span>
+                    </div>`;
                 }
-                return `<div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg"><label class="font-semibold text-lg">${habit.name}</label>${controlHtml}</div>`;
+                
+                return `<div class="bg-white border border-gray-200 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex justify-between items-start mb-3">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <label class="font-semibold text-lg text-gray-800">${habit.name}</label>
+                                ${streakCount > 0 ? `<span class="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">🔥 ${streakCount} días</span>` : ''}
+                            </div>
+                            ${progressHtml}
+                        </div>
+                        <div class="flex items-center gap-1 ml-4">
+                            <button class="btn btn-xs text-gray-500 hover:text-indigo-600" onclick="editHabit('${habit.id}')" title="Editar hábito">
+                                ✏️
+                            </button>
+                            <button class="btn btn-xs text-gray-500 hover:text-red-600" onclick="confirmDeleteHabit('${habit.id}')" title="Eliminar hábito">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        ${controlHtml}
+                    </div>
+                </div>`;
             }).join('');
         }
         async function updateHabit(habitId, value) { 
@@ -1341,10 +1432,18 @@
                     </div>
                     <div>
                         <label for="habit-type" class="block text-sm font-medium text-gray-700">Tipo de Seguimiento</label>
-                        <select id="habit-type" class="select-field">
+                        <select id="habit-type" class="select-field" onchange="toggleAddTargetField()">
                             <option value="counter">Contador (Ej: Vasos de agua)</option>
                             <option value="checkbox">Checklist (Ej: Meditación)</option>
                         </select>
+                    </div>
+                    <div id="add-target-field">
+                        <label for="habit-target" class="block text-sm font-medium text-gray-700">Meta Diaria</label>
+                        <input type="number" id="habit-target" class="input-field" value="1" min="1">
+                    </div>
+                    <div id="add-unit-field">
+                        <label for="habit-unit" class="block text-sm font-medium text-gray-700">Unidad (opcional)</label>
+                        <input type="text" id="habit-unit" class="input-field" placeholder="vasos, minutos, páginas...">
                     </div>
                 </form>
             `;
@@ -1354,6 +1453,8 @@
         async function saveNewHabit() {
             const name = document.getElementById('habit-name').value.trim();
             const type = document.getElementById('habit-type').value;
+            const target = parseInt(document.getElementById('habit-target').value) || 1;
+            const unit = document.getElementById('habit-unit').value.trim();
 
             if (!name) {
                 showError("El nombre del hábito no puede estar vacío.");
@@ -1365,10 +1466,172 @@
                 return;
             }
             
-            customHabits.push({ id, name, type });
+            const newHabit = { id, name, type };
+            if (type === 'counter') {
+                newHabit.target = target;
+                if (unit) newHabit.unit = unit;
+            }
+            
+            customHabits.push(newHabit);
             await saveData.config();
             renderHabitsPage();
             showToast("Hábito agregado a tu rutina.");
+            closeModal();
+        }
+
+        function toggleAddTargetField() {
+            const type = document.getElementById('habit-type').value;
+            const targetField = document.getElementById('add-target-field');
+            const unitField = document.getElementById('add-unit-field');
+            
+            if (type === 'counter') {
+                targetField.style.display = 'block';
+                unitField.style.display = 'block';
+            } else {
+                targetField.style.display = 'none';
+                unitField.style.display = 'none';
+            }
+        }
+
+        // --- HABIT MANAGEMENT FUNCTIONS ---
+        function calculateStreakCount(habitId) {
+            const habit = customHabits.find(h => h.id === habitId);
+            if (!habit) return 0;
+
+            const today = new Date();
+            let streak = 0;
+            let currentDate = new Date(today);
+
+            // Check backwards from today
+            for (let i = 0; i < 365; i++) { // Max 365 days to avoid infinite loop
+                const dateString = currentDate.toISOString().split('T')[0];
+                const dayData = habitData[dateString];
+                
+                if (!dayData || !dayData[habitId]) {
+                    // If today (first iteration) has no data, continue checking yesterday
+                    if (i === 0) {
+                        currentDate.setDate(currentDate.getDate() - 1);
+                        continue;
+                    }
+                    break;
+                }
+
+                const value = dayData[habitId];
+                let isCompleted = false;
+
+                if (habit.type === 'checkbox') {
+                    isCompleted = value === true;
+                } else { // counter
+                    const target = habit.target || 1;
+                    isCompleted = value >= target;
+                }
+
+                if (isCompleted) {
+                    streak++;
+                    currentDate.setDate(currentDate.getDate() - 1);
+                } else {
+                    break;
+                }
+            }
+
+            return streak;
+        }
+
+        function editHabit(habitId) {
+            const habit = customHabits.find(h => h.id === habitId);
+            if (!habit) return;
+
+            const modalContent = `
+                <form id="edit-habit-form" class="space-y-4">
+                    <div>
+                        <label for="edit-habit-name" class="block text-sm font-medium text-gray-700">Nombre del Hábito</label>
+                        <input type="text" id="edit-habit-name" class="input-field" value="${habit.name}" required>
+                    </div>
+                    <div>
+                        <label for="edit-habit-type" class="block text-sm font-medium text-gray-700">Tipo de Seguimiento</label>
+                        <select id="edit-habit-type" class="select-field" onchange="toggleTargetField()">
+                            <option value="counter" ${habit.type === 'counter' ? 'selected' : ''}>Contador</option>
+                            <option value="checkbox" ${habit.type === 'checkbox' ? 'selected' : ''}>Checklist</option>
+                        </select>
+                    </div>
+                    <div id="target-field" style="display: ${habit.type === 'counter' ? 'block' : 'none'}">
+                        <label for="edit-habit-target" class="block text-sm font-medium text-gray-700">Meta Diaria</label>
+                        <input type="number" id="edit-habit-target" class="input-field" value="${habit.target || 1}" min="1">
+                    </div>
+                    <div id="unit-field" style="display: ${habit.type === 'counter' ? 'block' : 'none'}">
+                        <label for="edit-habit-unit" class="block text-sm font-medium text-gray-700">Unidad (opcional)</label>
+                        <input type="text" id="edit-habit-unit" class="input-field" value="${habit.unit || ''}" placeholder="vasos, minutos, páginas...">
+                    </div>
+                </form>
+            `;
+            const actions = `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button onclick="saveEditedHabit('${habitId}')" class="btn btn-primary">Guardar Cambios</button>`;
+            openModal('Editar Hábito', modalContent, actions);
+        }
+
+        function toggleTargetField() {
+            const type = document.getElementById('edit-habit-type').value;
+            const targetField = document.getElementById('target-field');
+            const unitField = document.getElementById('unit-field');
+            
+            if (type === 'counter') {
+                targetField.style.display = 'block';
+                unitField.style.display = 'block';
+            } else {
+                targetField.style.display = 'none';
+                unitField.style.display = 'none';
+            }
+        }
+
+        async function saveEditedHabit(habitId) {
+            const name = document.getElementById('edit-habit-name').value.trim();
+            const type = document.getElementById('edit-habit-type').value;
+            const target = parseInt(document.getElementById('edit-habit-target').value) || 1;
+            const unit = document.getElementById('edit-habit-unit').value.trim();
+
+            if (!name) {
+                showError("El nombre del hábito no puede estar vacío.");
+                return;
+            }
+
+            const habitIndex = customHabits.findIndex(h => h.id === habitId);
+            if (habitIndex === -1) return;
+
+            customHabits[habitIndex] = {
+                ...customHabits[habitIndex],
+                name,
+                type,
+                target: type === 'counter' ? target : undefined,
+                unit: type === 'counter' && unit ? unit : undefined
+            };
+
+            await saveData.config();
+            renderHabitsPage();
+            showToast("Hábito actualizado.");
+            closeModal();
+        }
+
+        function confirmDeleteHabit(habitId) {
+            const habit = customHabits.find(h => h.id === habitId);
+            if (!habit) return;
+
+            const actions = `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button onclick="deleteHabit('${habitId}')" class="btn btn-danger">Eliminar</button>`;
+            openModal("Confirmar Eliminación", `<p>¿Estás seguro de que quieres eliminar el hábito "<strong>${habit.name}</strong>"?</p><p class="text-sm text-gray-600 mt-2">Se perderán todos los datos históricos de este hábito.</p>`, actions);
+        }
+
+        async function deleteHabit(habitId) {
+            // Remove habit from customHabits
+            customHabits = customHabits.filter(h => h.id !== habitId);
+            
+            // Remove habit data from all dates
+            Object.keys(habitData).forEach(date => {
+                if (habitData[date][habitId]) {
+                    delete habitData[date][habitId];
+                }
+            });
+
+            await Promise.all([saveData.config(), saveData.habitData()]);
+            renderHabitsPage();
+            showToast("Hábito eliminado.");
             closeModal();
         }
 
@@ -1605,6 +1868,12 @@
         window.switchFinanceTab = switchFinanceTab;
         window.openAddHabitModal = openAddHabitModal;
         window.saveNewHabit = saveNewHabit;
+        window.editHabit = editHabit;
+        window.saveEditedHabit = saveEditedHabit;
+        window.confirmDeleteHabit = confirmDeleteHabit;
+        window.deleteHabit = deleteHabit;
+        window.toggleTargetField = toggleTargetField;
+        window.toggleAddTargetField = toggleAddTargetField;
         window.handleHistoryPageClick = handleHistoryPageClick;
         window.handleFileChange = handleFileChange;
         window.openReconciliationModal = openReconciliationModal;
