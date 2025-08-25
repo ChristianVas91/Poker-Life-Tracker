@@ -214,86 +214,140 @@
         }
 
         async function loadAllDataFromFirestore() {
-            unsubscribes.forEach(unsub => unsub());
-            unsubscribes = [];
+            try {
+                unsubscribes.forEach(unsub => unsub());
+                unsubscribes = [];
 
-            const collectionsToSync = {
-                'config': (data) => {
-                    mockDataLoaded = data.mockDataLoaded || false;
-                    if (data.defaultBuyIns) defaultBuyIns = data.defaultBuyIns;
-                    if (data.bankrollBalances) bankrollBalances = data.bankrollBalances;
-                    if (data.platformNames) platformNames = data.platformNames;
-                    if(data.customHabits) customHabits = data.customHabits;
-                    else {
-                        customHabits = [
-                            { id: 'water', name: 'Vasos de Agua en Sesión', type: 'counter' },
-                            { id: 'hands', name: 'Manos Estudiadas', type: 'counter' },
-                            { id: 'meditation', name: 'Meditación', type: 'checkbox' },
-                            { id: 'exercise', name: 'Actividad Física', type: 'checkbox' },
-                            { id: 'warmup', name: 'Calentamiento Pre-Sesión', type: 'checkbox' }
-                        ];
+                const collectionsToSync = {
+                    'config': (data) => {
+                        mockDataLoaded = data.mockDataLoaded || false;
+                        if (data.defaultBuyIns) defaultBuyIns = data.defaultBuyIns;
+                        if (data.bankrollBalances) bankrollBalances = data.bankrollBalances;
+                        if (data.platformNames) platformNames = data.platformNames;
+                        if(data.customHabits) customHabits = data.customHabits;
+                        else {
+                            customHabits = [
+                                { id: 'water', name: 'Vasos de Agua en Sesión', type: 'counter' },
+                                { id: 'hands', name: 'Manos Estudiadas', type: 'counter' },
+                                { id: 'meditation', name: 'Meditación', type: 'checkbox' },
+                                { id: 'exercise', name: 'Actividad Física', type: 'checkbox' },
+                                { id: 'warmup', name: 'Calentamiento Pre-Sesión', type: 'checkbox' }
+                            ];
+                        }
+                    },
+                    'currentSession': (data) => {
+                        currentSession = data || {};
+                        if (!Array.isArray(currentSession.tournaments)) {
+                            currentSession.tournaments = [];
+                        }
+                    },
+                    'withdrawals': (data) => {
+                        withdrawals = data ? data.history || [] : [];
+                    },
+                    'sessionHistory': (doc) => {
+                        sessionHistory = doc.history || [];
+                         if (!mockDataLoaded) {
+                            loadMockDataIfEmpty();
+                            mockDataLoaded = true; 
+                            saveData.config();
+                        }
+                    },
+                    'studyHands': (data) => {
+                        studyHands = data ? data.hands || [] : [];
+                    },
+                    'journalPosts': (data) => {
+                        journalPosts = data ? data.posts || [] : [];
+                    },
+                    'habitData': (data) => {
+                        habitData = data || {};
+                    },
+                    'activityLog': (data) => {
+                        activityLog = data ? data.log || [] : [];
                     }
-                },
-                'currentSession': (data) => {
-                    currentSession = data || {};
-                    if (!Array.isArray(currentSession.tournaments)) {
-                        currentSession.tournaments = [];
-                    }
-                },
-                'withdrawals': (data) => {
-                    withdrawals = data ? data.history || [] : [];
-                },
-                'sessionHistory': (doc) => {
-                    sessionHistory = doc.history || [];
-                     if (!mockDataLoaded) {
-                        loadMockDataIfEmpty();
-                        mockDataLoaded = true; 
-                        saveData.config();
-                    }
-                },
-                'studyHands': (data) => {
-                    studyHands = data ? data.hands || [] : [];
-                },
-                'journalPosts': (data) => {
-                    journalPosts = data ? data.posts || [] : [];
-                },
-                'habitData': (data) => {
-                    habitData = data || {};
-                },
-                'activityLog': (data) => {
-                    activityLog = data ? data.log || [] : [];
-                }
-            };
-            
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-            
-            const promises = Object.keys(collectionsToSync).map(collectionName => {
-                return new Promise((resolve, reject) => {
-                    const docRef = doc(db, 'artifacts', appId, 'users', userId, collectionName, 'data');
-                    const unsub = onSnapshot(docRef, (docSnap) => {
-                        console.log(`Received update for ${collectionName}`);
-                        collectionsToSync[collectionName](docSnap.data() || {});
-                        resolve();
-                    }, (error) => {
-                        console.error(`Error listening to ${collectionName}:`, error);
-                        reject(error);
+                };
+                
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                
+                const promises = Object.keys(collectionsToSync).map(collectionName => {
+                    return new Promise((resolve, reject) => {
+                        const docRef = doc(db, 'artifacts', appId, 'users', userId, collectionName, 'data');
+                        const unsub = onSnapshot(docRef, (docSnap) => {
+                            try {
+                                console.log(`Received update for ${collectionName}`);
+                                collectionsToSync[collectionName](docSnap.data() || {});
+                                resolve();
+                            } catch (error) {
+                                console.error(`Error processing ${collectionName} data:`, error);
+                                reject(error);
+                            }
+                        }, (error) => {
+                            console.error(`Error listening to ${collectionName}:`, error);
+                            reject(error);
+                        });
+                        unsubscribes.push(unsub);
                     });
-                    unsubscribes.push(unsub);
                 });
-            });
 
-            await Promise.all(promises);
-            navigateTo('dashboard');
+                await Promise.all(promises);
+                navigateTo('dashboard');
+            } catch (error) {
+                console.error('Error loading data from Firestore:', error);
+                showError('Error al cargar los datos. Por favor, recarga la página.');
+            }
         }
 
         // --- GENERIC HELPER FUNCTIONS ---
         function formatCurrency(num) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num); }
-        function openModal(title, content, actions = '') {
-            document.getElementById('modal-title').innerHTML = title;
-            document.getElementById('modal-body').innerHTML = content + `<div class="mt-6 flex justify-end gap-3">${actions}</div>`;
-            document.getElementById('generic-modal').classList.remove('hidden');
+        
+        // Helper function to parse Spanish date format (DD/MM/YYYY) consistently
+        function parseSpanishDate(dateStr) {
+            try {
+                const [day, month, year] = dateStr.split('/');
+                const date = new Date(year, month - 1, day); // month is 0-indexed
+                return isNaN(date.getTime()) ? null : date;
+            } catch (error) {
+                console.warn('Invalid date format:', dateStr);
+                return null;
+            }
         }
-        function closeModal() { document.getElementById('generic-modal').classList.add('hidden'); }
+        
+        // Helper function to format date to Spanish format
+        function formatSpanishDate(date) {
+            try {
+                return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric'});
+            } catch (error) {
+                console.warn('Error formatting date:', date);
+                return '';
+            }
+        }
+        
+        // Helper function to safely get element by ID with error logging
+        function getElementSafely(id, context = 'Unknown') {
+            const element = document.getElementById(id);
+            if (!element) {
+                console.warn(`Element with ID '${id}' not found in context: ${context}`);
+            }
+            return element;
+        }
+        
+        function openModal(title, content, actions = '') {
+            const titleEl = getElementSafely('modal-title', 'openModal');
+            const bodyEl = getElementSafely('modal-body', 'openModal');
+            const modalEl = getElementSafely('generic-modal', 'openModal');
+            
+            if (titleEl && bodyEl && modalEl) {
+                titleEl.innerHTML = title;
+                bodyEl.innerHTML = content + `<div class="mt-6 flex justify-end gap-3">${actions}</div>`;
+                modalEl.classList.remove('hidden');
+            }
+        }
+        
+        function closeModal() { 
+            const modalEl = getElementSafely('generic-modal', 'closeModal');
+            if (modalEl) {
+                modalEl.classList.add('hidden'); 
+            }
+        }
         function showError(message) {
              openModal("Error", `<p class="text-red-600">${message}</p>`, `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>`);
         }
@@ -309,44 +363,84 @@
         // --- DATA SAVING (CENTRALIZED) ---
         const saveData = {
             config: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'data');
-                await setDoc(docRef, { defaultBuyIns, bankrollBalances, platformNames, mockDataLoaded, customHabits }, { merge: true });
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'data');
+                    await setDoc(docRef, { defaultBuyIns, bankrollBalances, platformNames, mockDataLoaded, customHabits }, { merge: true });
+                } catch (error) {
+                    console.error('Error saving config:', error);
+                    showError('Error al guardar la configuración.');
+                }
             },
             currentSession: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'currentSession', 'data');
-                await setDoc(docRef, currentSession);
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'currentSession', 'data');
+                    await setDoc(docRef, currentSession);
+                } catch (error) {
+                    console.error('Error saving current session:', error);
+                    showError('Error al guardar la sesión actual.');
+                }
             },
             withdrawals: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'withdrawals', 'data');
-                await setDoc(docRef, { history: withdrawals });
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'withdrawals', 'data');
+                    await setDoc(docRef, { history: withdrawals });
+                } catch (error) {
+                    console.error('Error saving withdrawals:', error);
+                    showError('Error al guardar los retiros.');
+                }
             },
             sessionHistory: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'sessionHistory', 'data');
-                await setDoc(docRef, { history: sessionHistory });
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'sessionHistory', 'data');
+                    await setDoc(docRef, { history: sessionHistory });
+                } catch (error) {
+                    console.error('Error saving session history:', error);
+                    showError('Error al guardar el historial.');
+                }
             },
             studyHands: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'studyHands', 'data');
-                await setDoc(docRef, { hands: studyHands });
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'studyHands', 'data');
+                    await setDoc(docRef, { hands: studyHands });
+                } catch (error) {
+                    console.error('Error saving study hands:', error);
+                    showError('Error al guardar las manos de estudio.');
+                }
             },
             journalPosts: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'journalPosts', 'data');
-                await setDoc(docRef, { posts: journalPosts });
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'journalPosts', 'data');
+                    await setDoc(docRef, { posts: journalPosts });
+                } catch (error) {
+                    console.error('Error saving journal posts:', error);
+                    showError('Error al guardar las entradas del diario.');
+                }
             },
             habitData: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'habitData', 'data');
-                await setDoc(docRef, habitData, { merge: true });
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'habitData', 'data');
+                    await setDoc(docRef, habitData, { merge: true });
+                } catch (error) {
+                    console.error('Error saving habit data:', error);
+                    showError('Error al guardar los datos de hábitos.');
+                }
             },
             activityLog: async () => {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
-                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'activityLog', 'data');
-                await setDoc(docRef, { log: activityLog });
+                try {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-poker-tracker';
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'activityLog', 'data');
+                    await setDoc(docRef, { log: activityLog });
+                } catch (error) {
+                    console.error('Error saving activity log:', error);
+                    showError('Error al guardar el log de actividad.');
+                }
             }
         };
 
@@ -399,9 +493,27 @@
                         actionMap[button.id](event);
                         return;
                     }
+                    
+                    // Handle tournament actions with data attributes
+                    if (button.dataset.action) {
+                        switch (button.dataset.action) {
+                            case 'add-bullet':
+                                addBullet(parseFloat(button.dataset.buyin), button.dataset.isReentry === 'true');
+                                break;
+                            case 'adjust-count':
+                                adjustCount(parseFloat(button.dataset.buyin), button.dataset.type, parseInt(button.dataset.amount));
+                                break;
+                        }
+                        return;
+                    }
                      if (button.closest('[onclick^="executeWithdrawal"]')) {
                         const onclickAttr = button.getAttribute('onclick');
-                        eval(onclickAttr);
+                        // Parse withdrawal parameters safely
+                        const match = onclickAttr.match(/executeWithdrawal\('([^']+)',\s*([^,]+),\s*'([^']+)'\)/);
+                        if (match) {
+                            const [, platformKey, amount, description] = match;
+                            executeWithdrawal(platformKey, parseFloat(amount), description);
+                        }
                     }
                 }
                 
@@ -414,7 +526,12 @@
                 }
                  if (target.closest('[onclick^="updateHabit"]')) {
                     const onclickAttr = target.closest('[onclick^="updateHabit"]').getAttribute('onclick');
-                    eval(onclickAttr);
+                    // Parse habit parameters safely
+                    const match = onclickAttr.match(/updateHabit\('([^']+)',\s*([^)]+)\)/);
+                    if (match) {
+                        const [, habitId, value] = match;
+                        updateHabit(habitId, value === 'this.checked' ? target.checked : parseFloat(value));
+                    }
                 }
             });
 
@@ -427,6 +544,11 @@
              });
         }
         function navigateTo(pageId, fullRender = true) {
+            // Avoid unnecessary re-renders if we're already on the page
+            if (currentPage === pageId && !fullRender) {
+                return;
+            }
+            
             currentPage = pageId;
             document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.id.split('-')[1] === pageId));
@@ -444,7 +566,7 @@
             const pageElement = document.getElementById(`page-${pageId}`);
             if(renderFunctions[pageId] && (pageElement.innerHTML.trim() === '' || fullRender)) {
                 renderFunctions[pageId]();
-            } else if (renderFunctions[pageId]) {
+            } else if (renderFunctions[pageId] && fullRender) {
                 // For pages with data that might update, re-render the dynamic parts
                 if (pageId === 'dashboard') renderDashboardPage();
                 else if (pageId === 'bankroll') renderBankrollPage();
@@ -509,9 +631,19 @@
 
         async function saveNewPlatform() {
             const nameInput = document.getElementById('platform-name');
+            if (!nameInput) {
+                showError("Error en el formulario. Por favor, intenta de nuevo.");
+                return;
+            }
+            
             const name = nameInput.value.trim();
             if (!name) {
                 showError("El nombre de la plataforma no puede estar vacío.");
+                return;
+            }
+
+            if (name.length > 50) {
+                showError("El nombre de la plataforma es demasiado largo (máximo 50 caracteres).");
                 return;
             }
 
@@ -521,11 +653,17 @@
                 return;
             }
 
-            platformNames[key] = name;
-            await saveData.config();
-            await logActivity('Configuración', `Nueva plataforma agregada: ${name}`);
-            showToast(`Plataforma "${name}" agregada.`);
-            closeModal();
+            try {
+                platformNames[key] = name;
+                await saveData.config();
+                await logActivity('Configuración', `Nueva plataforma agregada: ${name}`);
+                showToast(`Plataforma "${name}" agregada.`);
+                closeModal();
+                renderBankrollPage(); // Refresh the page to show the new platform
+            } catch (error) {
+                console.error('Error saving new platform:', error);
+                showError('Error al guardar la nueva plataforma.');
+            }
         }
 
         
@@ -558,10 +696,12 @@
         }
         function updateBankrollDisplay() {
             const totalBankroll = Object.values(bankrollBalances).reduce((sum, val) => sum + (val || 0), 0);
-            if(document.getElementById('bankroll-total-display')) {
-                document.getElementById('bankroll-total-display').textContent = formatCurrency(totalBankroll);
+            const totalDisplayEl = getElementSafely('bankroll-total-display', 'updateBankrollDisplay');
+            if (totalDisplayEl) {
+                totalDisplayEl.textContent = formatCurrency(totalBankroll);
             }
-            const tiersContainer = document.getElementById('bankroll-management-tiers');
+            
+            const tiersContainer = getElementSafely('bankroll-management-tiers', 'updateBankrollDisplay');
             if(tiersContainer) {
                 const tiers = { "Juego Conservador (1000 BIs)": 1000, "Juego Estándar (700 BIs)": 700, "Juego Agresivo (500 BIs)": 500 };
                 tiersContainer.innerHTML = Object.keys(tiers).map(label => {
@@ -587,15 +727,44 @@
         }
 
         function confirmWithdrawal() {
-            const amount = parseFloat(document.getElementById('withdrawal-amount').value);
-            const description = document.getElementById('withdrawal-desc').value.trim();
-            if (isNaN(amount) || amount <= 0 || !description) { showError("Ingresa un monto y descripción válidos."); return; }
+            const amountInput = document.getElementById('withdrawal-amount');
+            const descInput = document.getElementById('withdrawal-desc');
+            
+            if (!amountInput || !descInput) {
+                showError("Error en el formulario. Por favor, intenta de nuevo.");
+                return;
+            }
+            
+            const amount = parseFloat(amountInput.value);
+            const description = descInput.value.trim();
+            
+            if (isNaN(amount) || amount <= 0) { 
+                showError("Ingresa un monto válido mayor a 0."); 
+                return; 
+            }
+            
+            if (!description) { 
+                showError("La descripción es obligatoria."); 
+                return; 
+            }
+            
+            if (description.length > 100) {
+                showError("La descripción es demasiado larga (máximo 100 caracteres).");
+                return;
+            }
+            
+            const totalBankroll = Object.values(bankrollBalances).reduce((sum, val) => sum + (val || 0), 0);
+            if (amount > totalBankroll) {
+                showError("El monto del retiro excede el bankroll total disponible.");
+                return;
+            }
             
             let modalContent = `<p class="mb-4">Selecciona la plataforma de origen para el retiro de ${formatCurrency(amount)}:</p><div class="grid grid-cols-2 gap-2">`;
             modalContent += Object.keys(platformNames).map(key => {
                 const balance = bankrollBalances[key] || 0;
                 const disabled = balance < amount ? 'disabled' : '';
-                return `<button class="btn btn-secondary" onclick="executeWithdrawal('${key}', ${amount}, '${description.replace(/'/g, "\\'")}')" ${disabled}>${platformNames[key]} <span class="text-xs ml-2">(${formatCurrency(balance)})</span></button>`;
+                const escapedDescription = description.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                return `<button class="btn btn-secondary" onclick="executeWithdrawal('${key}', ${amount}, '${escapedDescription}')" ${disabled}>${platformNames[key]} <span class="text-xs ml-2">(${formatCurrency(balance)})</span></button>`;
             }).join('');
             modalContent += '</div>';
             
@@ -603,13 +772,44 @@
         }
 
         async function executeWithdrawal(platformKey, amount, description) {
-            bankrollBalances[platformKey] = (bankrollBalances[platformKey] || 0) - amount;
-            withdrawals.unshift({ date: new Date().toLocaleDateString('es-ES'), amount, description, source: platformNames[platformKey] });
-            
-            await logActivity('Retiro', `Retiro de ${formatCurrency(amount)} desde ${platformNames[platformKey]} (${description}).`);
-            await Promise.all([saveData.config(), saveData.withdrawals()]);
-            closeModal();
-            showToast(`Retiro registrado.`);
+            try {
+                if (!platformNames[platformKey]) {
+                    showError("Plataforma inválida.");
+                    return;
+                }
+                
+                if (isNaN(amount) || amount <= 0) {
+                    showError("Monto inválido.");
+                    return;
+                }
+                
+                const currentBalance = bankrollBalances[platformKey] || 0;
+                if (currentBalance < amount) {
+                    showError(`Saldo insuficiente en ${platformNames[platformKey]}.`);
+                    return;
+                }
+                
+                bankrollBalances[platformKey] = currentBalance - amount;
+                withdrawals.unshift({ 
+                    date: new Date().toLocaleDateString('es-ES'), 
+                    amount, 
+                    description: description || 'Sin descripción', 
+                    source: platformNames[platformKey] 
+                });
+                
+                await logActivity('Retiro', `Retiro de ${formatCurrency(amount)} desde ${platformNames[platformKey]} (${description}).`);
+                await Promise.all([saveData.config(), saveData.withdrawals()]);
+                closeModal();
+                showToast(`Retiro registrado.`);
+                
+                // Refresh bankroll page if we're on it
+                if (currentPage === 'bankroll') {
+                    renderBankrollPage();
+                }
+            } catch (error) {
+                console.error('Error executing withdrawal:', error);
+                showError('Error al procesar el retiro.');
+            }
         }
         function renderWithdrawalsHistory() {
             const container = document.getElementById('finance-tab-content');
@@ -653,8 +853,11 @@
             const canvas = document.getElementById('bankroll-distribution-chart');
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
+            
+            // Properly destroy existing chart
             if(bankrollDistributionChart) {
                 bankrollDistributionChart.destroy();
+                bankrollDistributionChart = null;
             }
             
             const labels = Object.keys(platformNames).map(key => platformNames[key]);
@@ -753,14 +956,22 @@
         function updateSummary() { 
             const totalEntries = currentSession.tournaments.reduce((s, t) => s + t.entries, 0); 
             const totalReentries = currentSession.tournaments.reduce((s, t) => s + t.reentries, 0); 
-            document.getElementById('total-entries-count').textContent = totalEntries; 
-            document.getElementById('total-reentries-count').textContent = totalReentries; 
-            document.getElementById('grand-total').textContent = formatCurrency(currentSession.tournaments.reduce((s, t) => s + (t.buyin * (t.entries + t.reentries)), 0)); 
-             const startTimeEl = document.getElementById('session-start-time');
-            if (currentSession.startTime) {
-                startTimeEl.textContent = new Date(currentSession.startTime).toLocaleString('es-ES');
-            } else {
-                startTimeEl.textContent = '--';
+            
+            const entriesEl = getElementSafely('total-entries-count', 'updateSummary');
+            const reentriesEl = getElementSafely('total-reentries-count', 'updateSummary');
+            const totalEl = getElementSafely('grand-total', 'updateSummary');
+            const startTimeEl = getElementSafely('session-start-time', 'updateSummary');
+            
+            if (entriesEl) entriesEl.textContent = totalEntries;
+            if (reentriesEl) reentriesEl.textContent = totalReentries;
+            if (totalEl) totalEl.textContent = formatCurrency(currentSession.tournaments.reduce((s, t) => s + (t.buyin * (t.entries + t.reentries)), 0));
+            
+            if (startTimeEl) {
+                if (currentSession.startTime) {
+                    startTimeEl.textContent = new Date(currentSession.startTime).toLocaleString('es-ES');
+                } else {
+                    startTimeEl.textContent = '--';
+                }
             }
         }
         function renderTournaments() { 
@@ -822,46 +1033,73 @@
         }
         
         async function executeReconciliation() {
-            const investment = currentSession.tournaments.reduce((s, t) => s + (t.buyin * (t.entries + t.reentries)), 0);
-            const initialTotalBankroll = Object.values(bankrollBalances).reduce((sum, val) => sum + (val || 0), 0);
-            const newBalances = { ...bankrollBalances };
-            let finalTotalBankroll = 0;
-            
-            document.querySelectorAll('#reconciliation-form input').forEach(input => {
-                const platformKey = input.dataset.platform;
-                const value = input.value;
-                newBalances[platformKey] = parseFloat(value) || 0;
-                finalTotalBankroll += newBalances[platformKey];
-            });
+            try {
+                const investment = currentSession.tournaments.reduce((s, t) => s + (t.buyin * (t.entries + t.reentries)), 0);
+                const initialTotalBankroll = Object.values(bankrollBalances).reduce((sum, val) => sum + (val || 0), 0);
+                const newBalances = { ...bankrollBalances };
+                let finalTotalBankroll = 0;
+                
+                const reconciliationInputs = document.querySelectorAll('#reconciliation-form input');
+                if (reconciliationInputs.length === 0) {
+                    showError("No se encontraron campos de reconciliación.");
+                    return;
+                }
+                
+                reconciliationInputs.forEach(input => {
+                    const platformKey = input.dataset.platform;
+                    const value = parseFloat(input.value) || 0;
+                    if (value < 0) {
+                        showError(`El saldo de ${platformNames[platformKey]} no puede ser negativo.`);
+                        return;
+                    }
+                    newBalances[platformKey] = value;
+                    finalTotalBankroll += value;
+                });
 
-            const profitLoss = finalTotalBankroll - (initialTotalBankroll - investment);
-            bankrollBalances = newBalances;
-            
-            const totalEntries = currentSession.tournaments.reduce((acc, t) => acc + t.entries, 0);
-            const totalReentries = currentSession.tournaments.reduce((acc, t) => acc + t.reentries, 0);
-            
-            const dateValue = document.getElementById('session-date').value;
-            const sessionDate = new Date(dateValue + 'T00:00:00'); // Avoid timezone issues
+                const profitLoss = finalTotalBankroll - (initialTotalBankroll - investment);
+                bankrollBalances = newBalances;
+                
+                const totalEntries = currentSession.tournaments.reduce((acc, t) => acc + t.entries, 0);
+                const totalReentries = currentSession.tournaments.reduce((acc, t) => acc + t.reentries, 0);
+                
+                const dateInput = document.getElementById('session-date');
+                if (!dateInput || !dateInput.value) {
+                    showError("La fecha de la sesión es obligatoria.");
+                    return;
+                }
+                
+                const dateValue = dateInput.value;
+                const sessionDate = new Date(dateValue + 'T00:00:00'); // Avoid timezone issues
+                
+                if (isNaN(sessionDate.getTime())) {
+                    showError("La fecha proporcionada no es válida.");
+                    return;
+                }
 
-            const sessionEntry = {
-                date: sessionDate.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric'}),
-                startTime: currentSession.startTime,
-                investment,
-                tournaments: totalEntries + totalReentries,
-                totalEntries: totalEntries,
-                totalReentries: totalReentries,
-                profitLoss,
-                finalBankroll: finalTotalBankroll
-            };
-            sessionHistory.push(sessionEntry);
-            await logActivity('Sesión Finalizada', `P/L de ${formatCurrency(profitLoss)}`);
-            
-            currentSession = { tournaments: [], startTime: null };
-            await sortAndSaveHistory();
-            await Promise.all([saveData.config(), saveData.currentSession()]);
-            showToast("¡Sesión conciliada y guardada con éxito!");
-            closeModal();
-            navigateTo('history');
+                const sessionEntry = {
+                    date: formatSpanishDate(sessionDate),
+                    startTime: currentSession.startTime,
+                    investment,
+                    tournaments: totalEntries + totalReentries,
+                    totalEntries: totalEntries,
+                    totalReentries: totalReentries,
+                    profitLoss,
+                    finalBankroll: finalTotalBankroll
+                };
+                
+                sessionHistory.push(sessionEntry);
+                await logActivity('Sesión Finalizada', `P/L de ${formatCurrency(profitLoss)}`);
+                
+                currentSession = { tournaments: [], startTime: null };
+                await sortAndSaveHistory();
+                await Promise.all([saveData.config(), saveData.currentSession()]);
+                showToast("¡Sesión conciliada y guardada con éxito!");
+                closeModal();
+                navigateTo('history');
+            } catch (error) {
+                console.error('Error executing reconciliation:', error);
+                showError('Error al procesar la reconciliación de la sesión.');
+            }
         }
 
         function openManualEntryModal() {
@@ -905,37 +1143,89 @@
             const profitLoss = parseFloat(document.getElementById('manual-pl').value);
             const finalBankroll = parseFloat(document.getElementById('manual-bankroll').value);
 
-            if (!dateValue || isNaN(investment) || isNaN(totalEntries) || isNaN(totalReentries) || isNaN(profitLoss) || isNaN(finalBankroll)) {
-                showError("Por favor, completa todos los campos con valores válidos.");
+            // Enhanced validation
+            if (!dateValue || dateValue.trim() === '') {
+                showError("La fecha es obligatoria.");
+                return;
+            }
+            
+            if (isNaN(investment) || investment < 0) {
+                showError("La inversión debe ser un número válido mayor o igual a 0.");
+                return;
+            }
+            
+            if (isNaN(totalEntries) || totalEntries < 0 || !Number.isInteger(totalEntries)) {
+                showError("Las entradas deben ser un número entero mayor o igual a 0.");
+                return;
+            }
+            
+            if (isNaN(totalReentries) || totalReentries < 0 || !Number.isInteger(totalReentries)) {
+                showError("Las reentradas deben ser un número entero mayor o igual a 0.");
+                return;
+            }
+            
+            if (isNaN(profitLoss)) {
+                showError("El Profit/Loss debe ser un número válido.");
+                return;
+            }
+            
+            if (isNaN(finalBankroll) || finalBankroll < 0) {
+                showError("El bankroll final debe ser un número válido mayor o igual a 0.");
                 return;
             }
             
             const sessionDate = new Date(dateValue + 'T00:00:00');
-            const formattedDate = sessionDate.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric'})
+            if (isNaN(sessionDate.getTime())) {
+                showError("La fecha proporcionada no es válida.");
+                return;
+            }
+            
+            const formattedDate = formatSpanishDate(sessionDate);
+            
+            if (!formattedDate) {
+                showError("Error al formatear la fecha.");
+                return;
+            }
 
-            sessionHistory.push({
-                date: formattedDate,
-                investment,
-                tournaments: totalEntries + totalReentries,
-                totalEntries: totalEntries,
-                totalReentries: totalReentries,
-                profitLoss,
-                finalBankroll
-            });
+            try {
+                sessionHistory.push({
+                    date: formattedDate,
+                    investment,
+                    tournaments: totalEntries + totalReentries,
+                    totalEntries: totalEntries,
+                    totalReentries: totalReentries,
+                    profitLoss,
+                    finalBankroll
+                });
 
-            await logActivity('Entrada Manual', `Sesión agregada para el ${formattedDate} con P/L de ${formatCurrency(profitLoss)}`);
-            await sortAndSaveHistory();
-            showToast("Sesión manual agregada.");
-            closeModal();
+                await logActivity('Entrada Manual', `Sesión agregada para el ${formattedDate} con P/L de ${formatCurrency(profitLoss)}`);
+                await sortAndSaveHistory();
+                showToast("Sesión manual agregada.");
+                closeModal();
+            } catch (error) {
+                console.error('Error saving manual entry:', error);
+                showError('Error al guardar la entrada manual.');
+            }
         }
 
         async function sortAndSaveHistory() {
-            sessionHistory.sort((a, b) => {
-                const dateA = new Date(a.date.split('/').reverse().join('-'));
-                const dateB = new Date(b.date.split('/').reverse().join('-'));
-                return dateA - dateB;
-            });
-            await saveData.sessionHistory();
+            try {
+                sessionHistory.sort((a, b) => {
+                    const dateA = parseSpanishDate(a.date);
+                    const dateB = parseSpanishDate(b.date);
+                    
+                    if (!dateA || !dateB) {
+                        console.warn('Invalid date found in session history:', a.date, b.date);
+                        return 0;
+                    }
+                    
+                    return dateA - dateB;
+                });
+                await saveData.sessionHistory();
+            } catch (error) {
+                console.error('Error sorting and saving history:', error);
+                showError('Error al ordenar y guardar el historial.');
+            }
         }
 
         function renderHistoryPage() { 
@@ -957,6 +1247,24 @@
             if (monthHeader) {
                 const monthKey = monthHeader.dataset.monthKey;
                 toggleMonth(monthKey);
+            }
+        }
+
+        function toggleCollapsible(contentId, iconId) {
+            const content = document.getElementById(contentId);
+            const icon = document.getElementById(iconId);
+            if (content && icon) {
+                content.classList.toggle('collapsed');
+                icon.classList.toggle('rotate-180');
+            }
+        }
+
+        function toggleMonth(monthKey) {
+            const monthBody = document.getElementById(`month-body-${monthKey}`);
+            const chevron = document.getElementById(`chevron-${monthKey}`);
+            if (monthBody && chevron) {
+                monthBody.classList.toggle('hidden');
+                chevron.classList.toggle('rotate-180');
             }
         }
 
@@ -991,8 +1299,8 @@
                 }
                 
                 filteredHistory = sessionHistory.filter(s => {
-                    const sessionDate = new Date(s.date.split('/').reverse().join('-'));
-                    return sessionDate >= startDate;
+                    const sessionDate = parseSpanishDate(s.date);
+                    return sessionDate && sessionDate >= startDate;
                 });
             }
             
@@ -1061,9 +1369,66 @@
         } 
         function renderHistoryChart(data) { 
             const historyData = data || sessionHistory;
-            const ctx = document.getElementById('history-chart').getContext('2d'); 
-            if(chartInstance){chartInstance.destroy();} 
-            chartInstance=new Chart(ctx,{type:'line',data:{labels:historyData.map(s=>s.date),datasets:[{label:'Bankroll',data:historyData.map(s=>s.finalBankroll),borderColor:'#4f46e5',yAxisID:'yBank'},{label:'P/L Sesión',data:historyData.map(s=>s.profitLoss),backgroundColor:historyData.map(s=>s.profitLoss>=0?'rgba(22, 163, 74, 0.5)':'rgba(220, 38, 38, 0.5)'),type:'bar',yAxisID:'yPL'}]},options:{scales:{yBank:{position:'left',title:{display:true,text:'Bankroll Total ($)'}},yPL:{position:'right',title:{display:true,text:'P/L Sesión ($)'},grid:{drawOnChartArea:false}}}}});
+            const canvas = document.getElementById('history-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d'); 
+            
+            // Properly destroy existing chart
+            if(chartInstance) {
+                chartInstance.destroy(); 
+                chartInstance = null;
+            }
+            
+            if (historyData.length === 0) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                ctx.font = "16px Inter";
+                ctx.fillStyle = "#a0aec0";
+                ctx.textAlign = "center";
+                ctx.fillText("No hay datos para mostrar.", ctx.canvas.width / 2, 50);
+                return;
+            }
+            
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: historyData.map(s => s.date),
+                    datasets: [{
+                        label: 'Bankroll',
+                        data: historyData.map(s => s.finalBankroll),
+                        borderColor: '#4f46e5',
+                        yAxisID: 'yBank',
+                        tension: 0.1
+                    }, {
+                        label: 'P/L Sesión',
+                        data: historyData.map(s => s.profitLoss),
+                        backgroundColor: historyData.map(s => s.profitLoss >= 0 ? 'rgba(22, 163, 74, 0.5)' : 'rgba(220, 38, 38, 0.5)'),
+                        type: 'bar',
+                        yAxisID: 'yPL'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        yBank: {
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Bankroll Total ($)'
+                            }
+                        },
+                        yPL: {
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'P/L Sesión ($)'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         // --- CSV Import/Export ---
@@ -1352,24 +1717,48 @@
             openModal('Agregar Nuevo Hábito de Rutina', modalContent, actions);
         }
         async function saveNewHabit() {
-            const name = document.getElementById('habit-name').value.trim();
-            const type = document.getElementById('habit-type').value;
+            const nameInput = document.getElementById('habit-name');
+            const typeSelect = document.getElementById('habit-type');
+            
+            if (!nameInput || !typeSelect) {
+                showError("Error en el formulario. Por favor, intenta de nuevo.");
+                return;
+            }
+            
+            const name = nameInput.value.trim();
+            const type = typeSelect.value;
 
             if (!name) {
                 showError("El nombre del hábito no puede estar vacío.");
                 return;
             }
-            const id = name.toLowerCase().replace(/\s+/g, '_');
+            
+            if (name.length > 50) {
+                showError("El nombre del hábito es demasiado largo (máximo 50 caracteres).");
+                return;
+            }
+            
+            if (!['counter', 'checkbox'].includes(type)) {
+                showError("Tipo de hábito inválido.");
+                return;
+            }
+            
+            const id = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
             if (customHabits.some(h => h.id === id)) {
                 showError("Ya existe un hábito con un nombre similar.");
                 return;
             }
             
-            customHabits.push({ id, name, type });
-            await saveData.config();
-            renderHabitsPage();
-            showToast("Hábito agregado a tu rutina.");
-            closeModal();
+            try {
+                customHabits.push({ id, name, type });
+                await saveData.config();
+                renderHabitsPage();
+                showToast("Hábito agregado a tu rutina.");
+                closeModal();
+            } catch (error) {
+                console.error('Error saving new habit:', error);
+                showError('Error al guardar el nuevo hábito.');
+            }
         }
 
         // --- GEMINI AI ANALYSIS ---
@@ -1553,18 +1942,58 @@
              const canvas = document.getElementById('dashboard-chart');
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
-            if(dashboardChart){dashboardChart.destroy();} 
             
-            const sortedHistory=[...sessionHistory];
-            dashboardChart = new Chart(ctx,{type:'line',data:{labels:sortedHistory.map(s=>s.date),datasets:[{label:'Bankroll',data:sortedHistory.map(s=>s.finalBankroll),borderColor:'#4f46e5', tension: 0.1}]},options:{scales:{y:{title:{display:true,text:'Bankroll Total ($)'}}}}});
+            // Properly destroy existing chart
+            if(dashboardChart) {
+                dashboardChart.destroy();
+                dashboardChart = null;
+            } 
+            
+            const sortedHistory = [...sessionHistory];
+            if (sortedHistory.length === 0) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                ctx.font = "16px Inter";
+                ctx.fillStyle = "#a0aec0";
+                ctx.textAlign = "center";
+                ctx.fillText("No hay datos para mostrar.", ctx.canvas.width / 2, 50);
+                return;
+            }
+            
+            dashboardChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sortedHistory.map(s => s.date),
+                    datasets: [{
+                        label: 'Bankroll',
+                        data: sortedHistory.map(s => s.finalBankroll),
+                        borderColor: '#4f46e5', 
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Bankroll Total ($)'
+                            }
+                        }
+                    }
+                }
+            });
         
             // Render Weekly Summary
             const weeklySummary = { 0: { tournaments: 0, totalEntries: 0, totalReentries: 0, investment: 0, profitLoss: 0 }, 1: { tournaments: 0, totalEntries: 0, totalReentries: 0, investment: 0, profitLoss: 0 }, 2: { tournaments: 0, totalEntries: 0, totalReentries: 0, investment: 0, profitLoss: 0 }, 3: { tournaments: 0, totalEntries: 0, totalReentries: 0, investment: 0, profitLoss: 0 }, 4: { tournaments: 0, totalEntries: 0, totalReentries: 0, investment: 0, profitLoss: 0 }, 5: { tournaments: 0, totalEntries: 0, totalReentries: 0, investment: 0, profitLoss: 0 }, 6: { tournaments: 0, totalEntries: 0, totalReentries: 0, investment: 0, profitLoss: 0 }, };
             sessionHistory.forEach(session => {
-                const [day, month, year] = session.date.split('/');
-                const sessionDate = new Date(`${year}-${month}-${day}`);
+                const sessionDate = parseSpanishDate(session.date);
+                if (!sessionDate) {
+                    console.warn('Invalid date in session history:', session.date);
+                    return;
+                }
+                
                 let dayOfWeek = sessionDate.getDay(); 
-                dayOfWeek = (dayOfWeek === 0) ? 6 : dayOfWeek - 1; 
+                dayOfWeek = (dayOfWeek === 0) ? 6 : dayOfWeek - 1; // Convert Sunday=0 to Sunday=6, and shift Monday to 0
 
                 weeklySummary[dayOfWeek].tournaments += session.tournaments || 0;
                 weeklySummary[dayOfWeek].totalEntries += session.totalEntries || 0;
